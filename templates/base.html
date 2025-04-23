@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en" data-theme="light"> <!-- Pico.css theme switcher support -->
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Budget Tracker{% endblock %}</title>
+    <!-- Link Pico.css -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <style>
+        /* Optional: Add minor custom styles */
+        body > main { padding: 1rem 1.5rem; }
+        nav { padding: 0 1.5rem; }
+        article { padding: 1rem 1.5rem; margin-bottom: 1rem; }
+        h4 { margin-bottom: 0.5rem; }
+        .grid > article { margin-bottom: 0; } /* Reduce margin inside grid */
+        .flash-msg { margin-bottom: 1rem; padding: 0.75rem 1.25rem; border: 1px solid transparent; border-radius: 0.25rem; }
+        .flash-msg.success { color: #0f5132; background-color: #d1e7dd; border-color: #badbcc; }
+        .flash-msg.danger { color: #842029; background-color: #f8d7da; border-color: #f5c2c7; }
+        .flash-msg.warning { color: #664d03; background-color: #fff3cd; border-color: #ffecb5; }
+        .flash-msg.info { color: #055160; background-color: #cff4fc; border-color: #b6effb; }
+        td.income { color: green; }
+        td.expense { color: red; }
+    </style>
+</head>
+<body>
+    <nav>
+    <ul>
+        <li><a href="{{ url_for('index') }}"><strong>Budget Tracker</strong></a></li>
+    </ul>
+    <ul>
+        {% if 'user_id' in session %}
+        <li>Hi, {{ session['username'] }}!</li>
+        <li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
+        <li><a href="{{ url_for('logout') }}" role="button" class="secondary outline">Logout</a></li>
+        {% else %}
+        <li><a href="{{ url_for('login') }}">Login</a></li>
+        <li><a href="{{ url_for('register') }}">Register</a></li>
+        {% endif %}
+    </ul>
+    </nav>
+
+    <main class="container">
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+            <div class="flash-msg {{ category }}">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- Page Content -->
+    {% block content %}{% endblock %}
+    </main>
+
+    <footer class="container" style="text-align: center; margin-top: 2rem; font-size: 0.9em; color: grey;">
+        Budget Tracker App
+    </footer>
+
+    <!-- Optional: Add JS if needed later -->
+</body>
+</html>
