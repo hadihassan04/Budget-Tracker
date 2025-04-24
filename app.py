@@ -352,6 +352,126 @@ def add_transaction():
     flash(f'{trans_type.capitalize()} of {amount:.2f} added successfully!', 'success')
     return redirect(url_for('dashboard'))
 
+# --- Route for Deleting a Transaction ---
+@app.route('/delete_transaction/<transaction_id>', methods=['POST'])
+@login_required
+def delete_transaction(transaction_id):
+    user_id = session['user_id']
+    transactions = load_transactions(user_id)
+
+    # Find the transaction index by its ID
+    transaction_to_delete = None
+    index_to_delete = -1
+    for i, t in enumerate(transactions):
+        if t.get('transaction_id') == transaction_id:
+            transaction_to_delete = t # Found it
+            index_to_delete = i
+            break
+
+    if transaction_to_delete:
+        # Remove the transaction from the list
+        transactions.pop(index_to_delete)
+        save_transactions(user_id, transactions) # Save the updated list
+        flash(f"Transaction '{transaction_to_delete.get('description', 'N/A')}' deleted successfully.", 'success')
+    else:
+        flash('Transaction not found or you do not have permission to delete it.', 'danger')
+
+    return redirect(url_for('dashboard'))
+
+
+# --- Route for Editing a Transaction (GET and POST) ---
+@app.route('/edit_transaction/<transaction_id>', methods=['GET', 'POST'])
+@login_required
+def edit_transaction(transaction_id):
+    user_id = session['user_id']
+    transactions = load_transactions(user_id)
+
+    # Find the transaction to edit
+    transaction_to_edit = None
+    transaction_index = -1
+    for i, t in enumerate(transactions):
+        if t.get('transaction_id') == transaction_id:
+            transaction_to_edit = t
+            transaction_index = i
+            break
+
+    if not transaction_to_edit:
+        flash('Transaction not found or you do not have permission to edit it.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    # --- Handle POST request (Form Submission) ---
+    if request.method == 'POST':
+        # Get updated data from form
+        trans_type = request.form.get('type')
+        amount_str = request.form.get('amount')
+        description = request.form.get('description', '').strip()
+        category = request.form.get('category', '').strip()
+        date_str = request.form.get('date', '').strip()
+
+        # --- Validation (Similar to add_transaction) ---
+        error = False
+        if not trans_type or trans_type not in ['income', 'expense']:
+            flash('Invalid transaction type selected.', 'danger'); error = True
+        try:
+            amount = round(float(amount_str), 2)
+            if amount <= 0: raise ValueError("Amount must be positive")
+        except (ValueError, TypeError):
+            flash('Invalid amount entered.', 'danger'); error = True
+        if trans_type == 'expense' and not category:
+            category = 'General' # Default or flash error based on preference
+        try:
+            if date_str:
+                # Parse standard YYYY-MM-DD from input type="date", format to storage format
+                transaction_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').strftime(transaction_date_format)
+            else: # If date is empty, maybe keep original or default? Let's keep original for edit.
+                 transaction_date = transaction_to_edit.get('date') # Keep original if not provided
+                 if not transaction_date: # If original was also missing, default to now
+                     transaction_date = datetime.datetime.now().strftime(transaction_date_format)
+
+        except ValueError:
+            flash(f'Invalid date format. Please use YYYY-MM-DD for input.', 'danger'); error = True
+
+        if error:
+            # If validation fails, re-render edit page with existing data
+            # Convert stored date back to YYYY-MM-DD for the date input field
+            try:
+                 current_date_for_input = datetime.datetime.strptime(transaction_to_edit.get('date',''), transaction_date_format).strftime('%Y-%m-%d')
+            except ValueError:
+                 current_date_for_input = '' # Handle case where stored date is invalid
+            transaction_to_edit['date_for_input'] = current_date_for_input
+            return render_template('edit_transaction.html', transaction=transaction_to_edit)
+        # --- End Validation ---
+
+        # Update the transaction dictionary IN PLACE within the list
+        transactions[transaction_index]['type'] = trans_type
+        transactions[transaction_index]['amount'] = amount
+        transactions[transaction_index]['description'] = description
+        transactions[transaction_index]['category'] = category if trans_type == 'expense' else None
+        transactions[transaction_index]['date'] = transaction_date
+        # Optionally update an 'updated_datetime' field
+        # transactions[transaction_index]['updated_datetime'] = datetime.datetime.now().strftime(datetime_storage_format)
+
+        save_transactions(user_id, transactions) # Save the entire updated list
+        flash('Transaction updated successfully!', 'success')
+        return redirect(url_for('dashboard'))
+
+    # --- Handle GET request (Show Edit Form) ---
+    else:
+        # Prepare date in YYYY-MM-DD format for the HTML date input
+        try:
+            stored_date_str = transaction_to_edit.get('date','')
+            date_for_input = datetime.datetime.strptime(stored_date_str, transaction_date_format).strftime('%Y-%m-%d')
+        except ValueError:
+             date_for_input = "" # Handle case where stored date is invalid or missing
+
+        # Add the formatted date to the dictionary being passed to the template
+        transaction_to_edit['date_for_input'] = date_for_input
+
+        # Get categories for dropdown (optional, could reuse get_categories)
+        all_transactions = load_transactions(user_id) # Load all to get full category list
+        categories = get_categories(all_transactions)
+
+        return render_template('edit_transaction.html', transaction=transaction_to_edit, categories=categories)
 
 
 if __name__ == '__main__':

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Edit Transaction{% endblock %}
+
+{% block content %}
+    <article>
+        <hgroup>
+            <h2>Edit Transaction</h2>
+            <h3>Update the details below</h3>
+        </hgroup>
+
+        <form method="POST" action="{{ url_for('edit_transaction', transaction_id=transaction.transaction_id) }}">
+
+            <!-- Transaction Type (Usually fixed, but allow change if needed) -->
+            <label for="type">Type *</label>
+            <select id="type" name="type" required>
+                <option value="income" {% if transaction.type == 'income' %}selected{% endif %}>Income</option>
+                <option value="expense" {% if transaction.type == 'expense' %}selected{% endif %}>Expense</option>
+            </select>
+
+            <!-- Amount -->
+            <label for="amount">Amount *</label>
+            <input type="number" step="0.01" min="0.01" id="amount" name="amount" value="{{ transaction.amount }}" required>
+
+            <!-- Date -->
+            <label for="date">Date (YYYY-MM-DD for input)</label>
+            <input type="date" id="date" name="date" value="{{ transaction.date_for_input }}"> <!-- Use the pre-formatted date -->
+
+            <!-- Category (Only relevant for Expense) -->
+            <label for="category">Category (for Expense)</label>
+            <input list="edit_expense_categories" id="category" name="category" value="{{ transaction.category | default('') }}" {% if transaction.type != 'expense' %}disabled{% endif %}> <!-- Disable if income -->
+             <datalist id="edit_expense_categories">
+                {% for cat in categories %} <!-- Assuming categories passed from route -->
+                    <option value="{{ cat }}">
+                {% endfor %}
+                 <option value="Food">
+                 <option value="Utilities">
+                 <option value="Transport">
+                 <option value="Entertainment">
+                 <option value="Shopping">
+                 <option value="Health">
+                 <option value="Other">
+            </datalist>
+
+            <!-- Description -->
+            <label for="description">Description</label>
+            <input type="text" id="description" name="description" value="{{ transaction.description | default('') }}">
+
+            <div class="grid">
+                <button type="submit">Update Transaction</button>
+                <a href="{{ url_for('dashboard') }}" role="button" class="secondary outline">Cancel</a>
+            </div>
+
+        </form>
+
+        <!-- Optional: Add JavaScript to enable/disable category based on type selection -->
+         <script>
+            document.getElementById('type').addEventListener('change', function() {
+                const categoryInput = document.getElementById('category');
+                if (this.value === 'expense') {
+                    categoryInput.disabled = false;
+                    categoryInput.required = true; // Make category required for expense
+                } else {
+                    categoryInput.disabled = true;
+                    categoryInput.required = false;
+                    // categoryInput.value = ''; // Optionally clear category if switched to income
+                }
+            });
+            // Initial check in case the page loads with 'income' selected
+            if (document.getElementById('type').value !== 'expense') {
+                 document.getElementById('category').disabled = true;
+                 document.getElementById('category').required = false;
+            } else {
+                 document.getElementById('category').required = true; // Ensure required on load if expense
+            }
+        </script>
+
+    </article>
+{% endblock %}
