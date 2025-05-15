@@ -2,21 +2,17 @@
 {% block title %}Register{% endblock %}
 
 {% block content %}
-    <article>
-    <hgroup>
-        <h2>Register</h2>
-        <h3>Create a new account</h3>
-    </hgroup>
+<article style="max-width: 400px; margin: 2rem auto;">
+    <h2 style="margin-bottom: 1.5rem; text-align: center;">Register</h2>
     <form method="POST" action="{{ url_for('register') }}">
         <label for="username">Username</label>
         <input type="text" id="username" name="username" placeholder="Choose a Username" required>
 
         <label for="password">Password</label>
         <input type="password" id="password" name="password" placeholder="Create a Password" required>
-        <!-- Add confirm password field if desired -->
-
-        <button type="submit">Register</button>
+        
+        <button type="submit" style="width: 100%; margin-top: 0.5rem;">Register</button>
     </form>
-    <p>Already have an account? <a href="{{ url_for('login') }}">Login here</a>.</p>
-    </article>
+    <p style="text-align: center; margin-top: 1.5rem;">Already have an account? <a href="{{ url_for('login') }}">Login here</a>.</p>
+</article>
 {% endblock %}

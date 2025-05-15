@@ -7,9 +7,7 @@ from collections import defaultdict
 
 # --- Configuration ---
 app = Flask(__name__)
-# SECRET_KEY is crucial for session management and flashing messages!
-# Use a strong, random key in a real application (e.g., os.urandom(24))
-app.config['SECRET_KEY'] = 'your_very_secret_and_unguessable_key'
+app.config['SECRET_KEY'] = 'your_very_secret_and_unguessable_key' # Use a strong key when deploying
 
 data_dir = 'data'
 users_file = os.path.join(data_dir, 'users.json')
@@ -20,7 +18,7 @@ datetime_storage_format = '%Y-%m-%d %H:%M:%S'
 def load_users():
     """Loads user data from users.json"""
     if not os.path.exists(users_file):
-        return {} # Return dict for easier username lookup
+        return {} 
     try:
         with open(users_file, 'r') as f:
             # Store as {'username': {'user_id': ..., 'password_hash': ...}}
@@ -31,19 +29,16 @@ def load_users():
         return {}
 
 def save_users(users_dict):
-    """Saves user data to users.json"""
     os.makedirs(data_dir, exist_ok=True)
-    # Convert back to list format for saving
+    # Convert back to list for saving
     users_list = list(users_dict.values())
     with open(users_file, 'w') as f:
         json.dump(users_list, f, indent=4)
 
 def get_user_transactions_path(user_id):
-    """Generates the path for a user's transaction file."""
     return os.path.join(data_dir, f"{user_id}_transactions.json")
 
 def load_transactions(user_id):
-    """Loads transactions for a specific user."""
     filepath = get_user_transactions_path(user_id)
     if not os.path.exists(filepath):
         return []
@@ -54,7 +49,6 @@ def load_transactions(user_id):
         return [] # Return empty list if file is corrupt or empty
 
 def save_transactions(user_id, transactions):
-    """Saves transactions for a specific user."""
     os.makedirs(data_dir, exist_ok=True)
     filepath = get_user_transactions_path(user_id)
     with open(filepath, 'w') as f:
@@ -63,29 +57,21 @@ def save_transactions(user_id, transactions):
 #Password Managment
 
 def hash_password(password):
-    """Hashes the password using bcrypt."""
     password_bytes = password.encode('utf-8')
-    # Generate salt and hash password
-    # bcrypt automatically handles salting
     hashed_bytes = bcrypt.hashpw(password_bytes, bcrypt.gensalt())
-    # Return the hash as a string for storing in JSON
     return hashed_bytes.decode('utf-8')
 
 def check_password(stored_hash_str, provided_password):
-    """Checks if the provided password matches the stored bcrypt hash."""
     password_bytes = provided_password.encode('utf-8')
     stored_hash_bytes = stored_hash_str.encode('utf-8')
-    # bcrypt.checkpw compares the provided password against the stored hash
     return bcrypt.checkpw(password_bytes, stored_hash_bytes)
 
 # --- Transaction Data Helpers ---
 
 def get_user_transactions_path(user_id):
-    """Generates the path for a user's transaction file."""
     return os.path.join(data_dir, f"{user_id}_transactions.json")
 
 def load_transactions(user_id):
-    """Loads transactions for a specific user from their JSON file."""
     filepath = get_user_transactions_path(user_id)
     if not os.path.exists(filepath):
         return []
@@ -96,7 +82,6 @@ def load_transactions(user_id):
         return []
 
 def save_transactions(user_id, transactions):
-    """Saves transactions list for a specific user to their JSON file."""
     os.makedirs(data_dir, exist_ok=True)
     filepath = get_user_transactions_path(user_id)
     try:
@@ -106,11 +91,9 @@ def save_transactions(user_id, transactions):
         print(f"Error saving transactions file for user {user_id}: {e}")
 
 
-# --- Data Analysis / Processing Helpers ---
-# (These remain the same as the previous version)
+#App Functions
 
 def calculate_summary(transactions):
-    """Calculates total income, expense, and balance from a list of transactions."""
     summary = {'total_income': 0.0, 'total_expense': 0.0, 'balance': 0.0}
     for t in transactions:
         amount = t.get('amount', 0.0)
@@ -122,7 +105,6 @@ def calculate_summary(transactions):
     return summary
 
 def get_categories(transactions):
-    """Gets a sorted list of unique categories from transactions."""
     categories = set()
     for t in transactions:
         if t.get('type') == 'expense' and t.get('category'):
@@ -130,7 +112,6 @@ def get_categories(transactions):
     return sorted(list(categories))
 
 def calculate_category_summary(transactions):
-    """Calculates total spending per category."""
     category_totals = defaultdict(float)
     for t in transactions:
         if t.get('type') == 'expense' and t.get('category'):
@@ -138,7 +119,6 @@ def calculate_category_summary(transactions):
     return dict(category_totals)
 
 def generate_recommendations(transactions):
-    """Generates simple financial tips based on transaction list."""
     if not transactions:
         return ['No transactions yet. Add some to get insights!']
 
@@ -157,8 +137,8 @@ def generate_recommendations(transactions):
 
     category_summary = calculate_category_summary(transactions)
     food_total = category_summary.get('Food', 0.0)
-    if food_total > 0 and exp > 0 and food_total > 0.2 * exp:
-         tips.append(f"Food Costs: Spending on Food ({food_total:.2f}) is over 20% of total expenses. Explore meal prep or cheaper options.")
+    if food_total > 0 and exp > 0 and food_total > 0.5 * exp:
+         tips.append(f"Food Costs: Spending on Food ({food_total:.2f}) is over 50% of total expenses. Explore meal prep or cheaper options.")
 
     if not tips:
         tips.append("Good balance! Your recorded spending seems manageable relative to income.")
@@ -168,7 +148,6 @@ def generate_recommendations(transactions):
 # --- Flask Decorators ---
 
 def login_required(f):
-    """Decorator to ensure user is logged in."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
@@ -207,15 +186,13 @@ def register():
             return render_template('register.html')
 
         # Hash password using bcrypt
-        hashed_password_str = hash_password(password) # Use the new bcrypt function
+        hashed_password_str = hash_password(password)
         user_id = str(uuid.uuid4())
 
-        # Store the bcrypt hash string (it includes the salt)
         users[username] = {
             'user_id': user_id,
             'username': username,
-            'password_hash': hashed_password_str # Store the single hash string
-            # No separate 'salt' field needed for bcrypt
+            'password_hash': hashed_password_str
         }
         save_users(users)
 
@@ -244,8 +221,7 @@ def login():
         user_data = users.get(username)
 
         if user_data:
-            stored_hash = user_data.get('password_hash') # Get the stored bcrypt hash string
-            # Check password using bcrypt
+            stored_hash = user_data.get('password_hash')
             if stored_hash and check_password(stored_hash, password):
                 session['user_id'] = user_data['user_id']
                 session['username'] = user_data['username']
@@ -265,7 +241,6 @@ def login():
 
 @app.route('/logout')
 def logout():
-    """Logs the user out."""
     session.pop('user_id', None)
     session.pop('username', None)
     flash('You have been logged out.', 'info')
@@ -274,18 +249,17 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    """Displays the main dashboard."""
     user_id = session['user_id']
     transactions = load_transactions(user_id)
 
     try:
         transactions_sorted = sorted(
             transactions,
-            key=lambda t: datetime.datetime.strptime(t.get('date', '1900-01-01'), transaction_date_format),
+            key=lambda t: datetime.datetime.strptime(t.get('date', datetime.datetime.now().strftime(transaction_date_format)), transaction_date_format),
             reverse=True
         )
     except ValueError:
-         transactions_sorted = transactions # Fallback
+         transactions_sorted = transactions
 
     summary = calculate_summary(transactions)
     categories = get_categories(transactions)
@@ -304,7 +278,6 @@ def dashboard():
 @app.route('/add_transaction', methods=['POST'])
 @login_required
 def add_transaction():
-    """Handles adding a new income or expense transaction."""
     user_id = session['user_id']
     trans_type = request.form.get('type')
     amount_str = request.form.get('amount')
@@ -312,7 +285,7 @@ def add_transaction():
     category = request.form.get('category', '').strip()
     date_str = request.form.get('date', '').strip()
 
-    # --- Validation --- (Same as before)
+
     if not trans_type or trans_type not in ['income', 'expense']:
         flash('Invalid transaction type selected.', 'danger')
         return redirect(url_for('dashboard'))
@@ -331,7 +304,7 @@ def add_transaction():
         else:
             transaction_date = datetime.datetime.now().strftime(transaction_date_format)
     except ValueError:
-        flash('Invalid date format. Please use YYYY-MM-DD.', 'danger')
+        flash('Invalid date format.', 'danger')
         return redirect(url_for('dashboard'))
     # --- End Validation ---
 
@@ -374,7 +347,7 @@ def delete_transaction(transaction_id):
         save_transactions(user_id, transactions) # Save the updated list
         flash(f"Transaction '{transaction_to_delete.get('description', 'N/A')}' deleted successfully.", 'success')
     else:
-        flash('Transaction not found or you do not have permission to delete it.', 'danger')
+        flash('Transaction not found.', 'danger')
 
     return redirect(url_for('dashboard'))
 
@@ -396,7 +369,7 @@ def edit_transaction(transaction_id):
             break
 
     if not transaction_to_edit:
-        flash('Transaction not found or you do not have permission to edit it.', 'danger')
+        flash('Transaction not found.', 'danger')
         return redirect(url_for('dashboard'))
 
     # --- Handle POST request (Form Submission) ---
@@ -418,46 +391,41 @@ def edit_transaction(transaction_id):
         except (ValueError, TypeError):
             flash('Invalid amount entered.', 'danger'); error = True
         if trans_type == 'expense' and not category:
-            category = 'General' # Default or flash error based on preference
+            category = 'General'
         try:
             if date_str:
-                # Parse standard YYYY-MM-DD from input type="date", format to storage format
                 transaction_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').strftime(transaction_date_format)
-            else: # If date is empty, maybe keep original or default? Let's keep original for edit.
-                 transaction_date = transaction_to_edit.get('date') # Keep original if not provided
-                 if not transaction_date: # If original was also missing, default to now
+            else:
+                 transaction_date = transaction_to_edit.get('date')
+                 if not transaction_date: # If missing, default to now
                      transaction_date = datetime.datetime.now().strftime(transaction_date_format)
 
         except ValueError:
-            flash(f'Invalid date format. Please use YYYY-MM-DD for input.', 'danger'); error = True
+            flash(f'Invalid date format.' , 'danger'); error = True
 
         if error:
-            # If validation fails, re-render edit page with existing data
-            # Convert stored date back to YYYY-MM-DD for the date input field
+            # If validation fails, re-load edit page with existing data
             try:
                  current_date_for_input = datetime.datetime.strptime(transaction_to_edit.get('date',''), transaction_date_format).strftime('%Y-%m-%d')
             except ValueError:
-                 current_date_for_input = '' # Handle case where stored date is invalid
+                 current_date_for_input = ''
             transaction_to_edit['date_for_input'] = current_date_for_input
             return render_template('edit_transaction.html', transaction=transaction_to_edit)
         # --- End Validation ---
 
-        # Update the transaction dictionary IN PLACE within the list
+        # Update the transaction dictionary
         transactions[transaction_index]['type'] = trans_type
         transactions[transaction_index]['amount'] = amount
         transactions[transaction_index]['description'] = description
         transactions[transaction_index]['category'] = category if trans_type == 'expense' else None
         transactions[transaction_index]['date'] = transaction_date
-        # Optionally update an 'updated_datetime' field
-        # transactions[transaction_index]['updated_datetime'] = datetime.datetime.now().strftime(datetime_storage_format)
 
-        save_transactions(user_id, transactions) # Save the entire updated list
+        save_transactions(user_id, transactions)
         flash('Transaction updated successfully!', 'success')
         return redirect(url_for('dashboard'))
 
     # --- Handle GET request (Show Edit Form) ---
     else:
-        # Prepare date in YYYY-MM-DD format for the HTML date input
         try:
             stored_date_str = transaction_to_edit.get('date','')
             date_for_input = datetime.datetime.strptime(stored_date_str, transaction_date_format).strftime('%Y-%m-%d')
@@ -467,13 +435,12 @@ def edit_transaction(transaction_id):
         # Add the formatted date to the dictionary being passed to the template
         transaction_to_edit['date_for_input'] = date_for_input
 
-        # Get categories for dropdown (optional, could reuse get_categories)
-        all_transactions = load_transactions(user_id) # Load all to get full category list
+        all_transactions = load_transactions(user_id)
         categories = get_categories(all_transactions)
 
         return render_template('edit_transaction.html', transaction=transaction_to_edit, categories=categories)
 
 
 if __name__ == '__main__':
-    # Debug=True is useful for development (auto-reloads), turn off for production
+    # Debug=True (auto-reloads)
     app.run(debug=True)

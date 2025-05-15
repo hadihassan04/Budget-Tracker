@@ -1,25 +1,147 @@
 <!doctype html>
-<html lang="en" data-theme="light"> <!-- Pico.css theme switcher support -->
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Budget Tracker{% endblock %}</title>
-    <!-- Link Pico.css -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <title>{% block title %}Budget Buddy{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css?family=Inter:400,500,600&display=swap" rel="stylesheet">
     <style>
-        /* Optional: Add minor custom styles */
-        body > main { padding: 1rem 1.5rem; }
-        nav { padding: 0 1.5rem; }
-        article { padding: 1rem 1.5rem; margin-bottom: 1rem; }
-        h4 { margin-bottom: 0.5rem; }
-        .grid > article { margin-bottom: 0; } /* Reduce margin inside grid */
-        .flash-msg { margin-bottom: 1rem; padding: 0.75rem 1.25rem; border: 1px solid transparent; border-radius: 0.25rem; }
-        .flash-msg.success { color: #0f5132; background-color: #d1e7dd; border-color: #badbcc; }
-        .flash-msg.danger { color: #842029; background-color: #f8d7da; border-color: #f5c2c7; }
-        .flash-msg.warning { color: #664d03; background-color: #fff3cd; border-color: #ffecb5; }
-        .flash-msg.info { color: #055160; background-color: #cff4fc; border-color: #b6effb; }
-        td.income { color: green; }
-        td.expense { color: red; }
+        html, body {
+            font-family: 'Inter', Arial, sans-serif;
+            background: #f8fafc;
+            color: #222;
+            margin: 0;
+            padding: 0;
+        }
+        nav {
+            background: #fff;
+            border-bottom: 1px solid #e5e7eb;
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px 0 rgba(0,0,0,0.02);
+        }
+        nav ul {
+            list-style: none;
+            display: flex;
+            gap: 1.5rem;
+            margin: 0;
+            padding: 0;
+        }
+        nav a {
+            text-decoration: none;
+            color: #222;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        nav a:hover {
+            color: #6366f1;
+        }
+        main.container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1.5rem;
+        }
+        article, section, form {
+            background: #fff;
+            border-radius: 0.75rem;
+            box-shadow: 0 2px 8px 0 rgba(0,0,0,0.04);
+            padding: 1.5rem 2rem;
+            margin-bottom: 2rem;
+        }
+        h2, h3, h4 {
+            font-weight: 600;
+            margin-top: 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 0.3rem;
+            font-weight: 500;
+        }
+        input, select, button, textarea {
+            font-family: inherit;
+            font-size: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid #e5e7eb;
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 1rem;
+            width: 100%;
+            box-sizing: border-box;
+            background: #f9fafb;
+            transition: border 0.2s;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #6366f1;
+            background: #fff;
+        }
+        button, [role="button"] {
+            background: #6366f1;
+            color: #fff;
+            border: none;
+            border-radius: 0.5rem;
+            padding: 0.5rem 1.25rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
+            box-shadow: 0 1px 2px 0 rgba(0,0,0,0.03);
+        }
+        button:hover, [role="button"]:hover {
+            background: #4f46e5;
+        }
+        .secondary {
+            background: #f3f4f6;
+            color: #222;
+            border: 1px solid #e5e7eb;
+        }
+        .secondary:hover {
+            background: #e0e7ef;
+        }
+        .outline {
+            background: transparent;
+            color: #6366f1;
+            border: 1px solid #6366f1;
+        }
+        .outline:hover {
+            background: #eef2ff;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        th, td {
+            padding: 0.7rem 0.5rem;
+            border-bottom: 1px solid #e5e7eb;
+            text-align: left;
+        }
+        th {
+            background: #f3f4f6;
+            font-weight: 600;
+        }
+        tr:last-child td {
+            border-bottom: none;
+        }
+        .flash-msg {
+            margin-bottom: 1rem;
+            padding: 0.75rem 1.25rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+        }
+        .flash-msg.success { color: #166534; background: #dcfce7; border: 1px solid #bbf7d0; }
+        .flash-msg.danger { color: #b91c1c; background: #fee2e2; border: 1px solid #fecaca; }
+        .flash-msg.warning { color: #92400e; background: #fef3c7; border: 1px solid #fde68a; }
+        .flash-msg.info { color: #0e7490; background: #cffafe; border: 1px solid #a5f3fc; }
+        td.income { color: #166534; font-weight: 500; }
+        td.expense { color: #b91c1c; font-weight: 500; }
+        @media (max-width: 600px) {
+            main.container { padding: 0; }
+            article, section, form { padding: 1rem; }
+            nav { flex-direction: column; gap: 0.5rem; }
+            table, thead, tbody, th, td, tr { display: block; width: 100%; }
+            th, td { box-sizing: border-box; }
+        }
     </style>
 </head>
 <body>
@@ -30,7 +152,6 @@
     <ul>
         {% if 'user_id' in session %}
         <li>Hi, {{ session['username'] }}!</li>
-        <li><a href="{{ url_for('dashboard') }}">Dashboard</a></li>
         <li><a href="{{ url_for('logout') }}" role="button" class="secondary outline">Logout</a></li>
         {% else %}
         <li><a href="{{ url_for('login') }}">Login</a></li>
@@ -53,10 +174,9 @@
     {% block content %}{% endblock %}
     </main>
 
-    <footer class="container" style="text-align: center; margin-top: 2rem; font-size: 0.9em; color: grey;">
-        Budget Tracker App
+    <footer class="container" style="text-align: center; margin-top: 2rem; font-size: 0.9em; color: #888;">
+        Budget Buddy 
+        © Hadi Hassan - 2025
     </footer>
-
-    <!-- Optional: Add JS if needed later -->
 </body>
 </html>
