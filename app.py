@@ -440,6 +440,117 @@ def edit_transaction(transaction_id):
 
         return render_template('edit_transaction.html', transaction=transaction_to_edit, categories=categories)
 
+# --- Route for Chart Data ---
+@app.route('/get_chart_data', methods=['GET'])
+@login_required
+def get_chart_data():
+    user_id = session['user_id']
+    chart_type = request.args.get('type', 'category')
+    
+    transactions = load_transactions(user_id)
+    
+    if chart_type == 'category':
+        # Prepare data for category pie chart
+        category_summary = calculate_category_summary(transactions)
+        data = {
+            'labels': list(category_summary.keys()),
+            'datasets': [{
+                'data': list(category_summary.values()),
+                'backgroundColor': [
+                    '#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#3B82F6', 
+                    '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16', '#6366F1'
+                ]
+            }]
+        }
+        return json.dumps(data), 200, {'Content-Type': 'application/json'}
+        
+    elif chart_type == 'income_vs_expense':
+        # Prepare data for income vs expense bar chart
+        summary = calculate_summary(transactions)
+        data = {
+            'labels': ['Income', 'Expenses'],
+            'datasets': [{
+                'data': [summary['total_income'], summary['total_expense']],
+                'backgroundColor': ['#10B981', '#EF4444']
+            }]
+        }
+        return json.dumps(data), 200, {'Content-Type': 'application/json'}
+        
+    elif chart_type == 'monthly_trend':
+        # Prepare data for monthly spending trends line chart
+        # Group transactions by month
+        monthly_spending = defaultdict(float)
+        categories_by_month = defaultdict(lambda: defaultdict(float))
+        
+        for transaction in transactions:
+            try:
+                if transaction.get('type') == 'expense':
+                    date = datetime.datetime.strptime(transaction.get('date', ''), transaction_date_format)
+                    month_key = date.strftime('%Y-%m')
+                    amount = transaction.get('amount', 0)
+                    category = transaction.get('category', 'Other')
+                    
+                    monthly_spending[month_key] += amount
+                    categories_by_month[month_key][category] += amount
+            except (ValueError, TypeError):
+                continue
+        
+        # Sort months chronologically
+        sorted_months = sorted(monthly_spending.keys())
+        
+        # Get top 5 spending categories over all time
+        all_categories = set()
+        for month_data in categories_by_month.values():
+            all_categories.update(month_data.keys())
+        
+        category_totals = defaultdict(float)
+        for month, categories in categories_by_month.items():
+            for category, amount in categories.items():
+                category_totals[category] += amount
+        
+        top_categories = sorted(category_totals.items(), key=lambda x: x[1], reverse=True)[:5]
+        top_category_names = [cat[0] for cat in top_categories]
+        
+        # Generate dataset for total monthly spending
+        datasets = [
+            {
+                'label': 'Total Spending',
+                'data': [monthly_spending[month] for month in sorted_months],
+                'borderColor': '#EF4444',
+                'backgroundColor': 'rgba(239, 68, 68, 0.1)',
+                'borderWidth': 3,
+                'tension': 0.1
+            }
+        ]
+        
+        # Generate colors for top categories
+        category_colors = {
+            top_category_names[i]: [
+                '#3730A3', '#059669', '#DC2626', '#2563EB', '#D97706'
+            ][i % 5] for i in range(len(top_category_names))
+        }
+        
+        # Add datasets for top categories if we have enough data
+        if len(sorted_months) > 1:
+            for category in top_category_names:
+                datasets.append({
+                    'label': category,
+                    'data': [categories_by_month[month].get(category, 0) for month in sorted_months],
+                    'borderColor': category_colors.get(category, '#9CA3AF'),
+                    'backgroundColor': 'rgba(0, 0, 0, 0)',
+                    'borderWidth': 2,
+                    'borderDash': [],
+                    'tension': 0.1
+                })
+        
+        data = {
+            'labels': sorted_months,
+            'datasets': datasets
+        }
+        return json.dumps(data), 200, {'Content-Type': 'application/json'}
+    
+    return json.dumps({}), 200, {'Content-Type': 'application/json'}
+
 
 if __name__ == '__main__':
     # Debug=True (auto-reloads)
