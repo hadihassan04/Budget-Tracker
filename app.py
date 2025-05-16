@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 import os, json, uuid
 import bcrypt
 import datetime
@@ -446,11 +446,16 @@ def edit_transaction(transaction_id):
 def get_chart_data():
     user_id = session['user_id']
     chart_type = request.args.get('type', 'category')
-    
+    mode = request.args.get('mode', 'all_time')  # 'month' or 'all_time'
+    month = request.args.get('month')
+    year = request.args.get('year')
     transactions = load_transactions(user_id)
-    
+
+    # Filter transactions for 'month' mode
+    if mode == 'month' and month and year:
+        transactions = [t for t in transactions if t.get('date', '').startswith(f'{year}-{month}')]
+
     if chart_type == 'category':
-        # Prepare data for category pie chart
         category_summary = calculate_category_summary(transactions)
         data = {
             'labels': list(category_summary.keys()),
@@ -463,94 +468,156 @@ def get_chart_data():
             }]
         }
         return json.dumps(data), 200, {'Content-Type': 'application/json'}
-        
+
     elif chart_type == 'income_vs_expense':
-        # Prepare data for income vs expense bar chart
-        summary = calculate_summary(transactions)
-        data = {
-            'labels': ['Income', 'Expenses'],
-            'datasets': [{
-                'data': [summary['total_income'], summary['total_expense']],
-                'backgroundColor': ['#10B981', '#EF4444']
-            }]
-        }
-        return json.dumps(data), 200, {'Content-Type': 'application/json'}
-        
+        if mode == 'month' and month and year:
+            # Day-by-day income and expenses for the selected month
+            days_in_month = [f'{year}-{month}-{str(day).zfill(2)}' for day in range(1, 32)]
+            daily_income = {d: 0.0 for d in days_in_month}
+            daily_expense = {d: 0.0 for d in days_in_month}
+            for t in transactions:
+                date = t.get('date', '')
+                if date in daily_income:
+                    if t.get('type') == 'income':
+                        daily_income[date] += t.get('amount', 0)
+                    elif t.get('type') == 'expense':
+                        daily_expense[date] += t.get('amount', 0)
+            # Only include days with data or up to the last transaction day
+            all_days = sorted(set([t.get('date') for t in transactions if t.get('date', '').startswith(f'{year}-{month}')]))
+            data = {
+                'labels': all_days,
+                'datasets': [
+                    {
+                        'label': 'Income',
+                        'data': [daily_income[d] for d in all_days],
+                        'borderColor': '#10B981',
+                        'backgroundColor': 'rgba(16,185,129,0.1)',
+                        'tension': 0.1,
+                        'fill': False
+                    },
+                    {
+                        'label': 'Expenses',
+                        'data': [daily_expense[d] for d in all_days],
+                        'borderColor': '#EF4444',
+                        'backgroundColor': 'rgba(239,68,68,0.1)',
+                        'tension': 0.1,
+                        'fill': False
+                    }
+                ]
+            }
+            return json.dumps(data), 200, {'Content-Type': 'application/json'}
+        else:
+            # fallback: show nothing
+            return json.dumps({'labels': [], 'datasets': []}), 200, {'Content-Type': 'application/json'}
+
     elif chart_type == 'monthly_trend':
-        # Prepare data for monthly spending trends line chart
-        # Group transactions by month
-        monthly_spending = defaultdict(float)
-        categories_by_month = defaultdict(lambda: defaultdict(float))
-        
-        for transaction in transactions:
+        # Only for all_time mode: show both monthly income and expenses
+        monthly_income = defaultdict(float)
+        monthly_expense = defaultdict(float)
+        for t in transactions:
             try:
-                if transaction.get('type') == 'expense':
-                    date = datetime.datetime.strptime(transaction.get('date', ''), transaction_date_format)
-                    month_key = date.strftime('%Y-%m')
-                    amount = transaction.get('amount', 0)
-                    category = transaction.get('category', 'Other')
-                    
-                    monthly_spending[month_key] += amount
-                    categories_by_month[month_key][category] += amount
+                date = datetime.datetime.strptime(t.get('date', ''), transaction_date_format)
+                month_key = date.strftime('%Y-%m')
+                if t.get('type') == 'income':
+                    monthly_income[month_key] += t.get('amount', 0)
+                elif t.get('type') == 'expense':
+                    monthly_expense[month_key] += t.get('amount', 0)
             except (ValueError, TypeError):
                 continue
-        
-        # Sort months chronologically
-        sorted_months = sorted(monthly_spending.keys())
-        
-        # Get top 5 spending categories over all time
-        all_categories = set()
-        for month_data in categories_by_month.values():
-            all_categories.update(month_data.keys())
-        
-        category_totals = defaultdict(float)
-        for month, categories in categories_by_month.items():
-            for category, amount in categories.items():
-                category_totals[category] += amount
-        
-        top_categories = sorted(category_totals.items(), key=lambda x: x[1], reverse=True)[:5]
-        top_category_names = [cat[0] for cat in top_categories]
-        
-        # Generate dataset for total monthly spending
-        datasets = [
-            {
-                'label': 'Total Spending',
-                'data': [monthly_spending[month] for month in sorted_months],
-                'borderColor': '#EF4444',
-                'backgroundColor': 'rgba(239, 68, 68, 0.1)',
-                'borderWidth': 3,
-                'tension': 0.1
-            }
-        ]
-        
-        # Generate colors for top categories
-        category_colors = {
-            top_category_names[i]: [
-                '#3730A3', '#059669', '#DC2626', '#2563EB', '#D97706'
-            ][i % 5] for i in range(len(top_category_names))
-        }
-        
-        # Add datasets for top categories if we have enough data
-        if len(sorted_months) > 1:
-            for category in top_category_names:
-                datasets.append({
-                    'label': category,
-                    'data': [categories_by_month[month].get(category, 0) for month in sorted_months],
-                    'borderColor': category_colors.get(category, '#9CA3AF'),
-                    'backgroundColor': 'rgba(0, 0, 0, 0)',
-                    'borderWidth': 2,
-                    'borderDash': [],
-                    'tension': 0.1
-                })
-        
+        all_months = sorted(set(list(monthly_income.keys()) + list(monthly_expense.keys())))
         data = {
-            'labels': sorted_months,
-            'datasets': datasets
+            'labels': all_months,
+            'datasets': [
+                {
+                    'label': 'Income',
+                    'data': [monthly_income[m] for m in all_months],
+                    'borderColor': '#10B981',
+                    'backgroundColor': 'rgba(16,185,129,0.1)',
+                    'type': 'line',
+                    'tension': 0.1,
+                    'fill': False
+                },
+                {
+                    'label': 'Expenses',
+                    'data': [monthly_expense[m] for m in all_months],
+                    'borderColor': '#EF4444',
+                    'backgroundColor': 'rgba(239,68,68,0.1)',
+                    'type': 'bar',
+                    'tension': 0.1,
+                    'fill': False
+                }
+            ]
         }
         return json.dumps(data), 200, {'Content-Type': 'application/json'}
-    
     return json.dumps({}), 200, {'Content-Type': 'application/json'}
 
+@app.route('/get_summary')
+@login_required
+def get_summary():
+    user_id = session['user_id']
+    mode = request.args.get('mode', 'all_time')
+    month = request.args.get('month')
+    year = request.args.get('year')
+    transactions = load_transactions(user_id)
+    if mode == 'month' and month and year:
+        transactions = [t for t in transactions if t.get('date', '').startswith(f'{year}-{month}')]
+    summary = calculate_summary(transactions)
+    return jsonify(summary)
+
+@app.route('/get_transactions')
+@login_required
+def get_transactions():
+    user_id = session['user_id']
+    mode = request.args.get('mode', 'all_time')
+    month = request.args.get('month')
+    year = request.args.get('year')
+    transactions = load_transactions(user_id)
+    if mode == 'month' and month and year:
+        transactions = [t for t in transactions if t.get('date', '').startswith(f'{year}-{month}')]
+    # Sort by date descending
+    try:
+        transactions_sorted = sorted(
+            transactions,
+            key=lambda t: datetime.datetime.strptime(t.get('date', datetime.datetime.now().strftime(transaction_date_format)), transaction_date_format),
+            reverse=True
+        )
+    except ValueError:
+        transactions_sorted = transactions
+    return jsonify(transactions_sorted)
+
+@app.route('/get_months_years')
+@login_required
+def get_months_years():
+    user_id = session['user_id']
+    transactions = load_transactions(user_id)
+    months_years = set()
+    for t in transactions:
+        date_str = t.get('date', '')
+        try:
+            dt = datetime.datetime.strptime(date_str, transaction_date_format)
+            months_years.add((dt.year, dt.month))
+        except Exception:
+            continue
+    # Sort by year, then month, descending
+    sorted_months_years = sorted(list(months_years), key=lambda x: (x[0], x[1]), reverse=True)
+    # Return as list of dicts: [{year: 2024, month: 6}, ...]
+    return jsonify([{'year': y, 'month': str(m).zfill(2)} for y, m in sorted_months_years])
+
+@app.route('/get_transaction/<transaction_id>')
+@login_required
+def get_transaction(transaction_id):
+    user_id = session['user_id']
+    transactions = load_transactions(user_id)
+    for t in transactions:
+        if t.get('transaction_id') == transaction_id:
+            # Add date_for_input for the edit modal
+            try:
+                date_for_input = datetime.datetime.strptime(t.get('date',''), transaction_date_format).strftime('%Y-%m-%d')
+            except Exception:
+                date_for_input = ''
+            t['date_for_input'] = date_for_input
+            return jsonify(t)
+    return jsonify({'error': 'Transaction not found'}), 404
 
 if __name__ == '__main__':
     # Debug=True (auto-reloads)
