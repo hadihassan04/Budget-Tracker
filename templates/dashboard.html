@@ -46,8 +46,11 @@
     <!-- Modal for Add Transaction -->
     <div id="add-transaction-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.35); z-index: 1002; align-items: center; justify-content: center;">
       <div style="background: #fff; border-radius: 12px; max-width: 480px; width: 95vw; padding: 2rem 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.18); position: relative; display: flex; flex-direction: column;">
-        <button id="close-modal-btn" aria-label="Close" style="position: absolute; top: 1.2rem; right: 1.2rem; background: none; border: none; font-size: 2rem; color: #6366f1; cursor: pointer; align-self: flex-end;">&times;</button>
-        <h3 style="margin-bottom: 1.2rem; text-align: center;">Add New Transaction</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem;">
+            <div style="flex: 1;"></div>
+            <h3 style="margin: 0; text-align: center; flex: 2;">Add New Transaction</h3>
+            <button id="close-modal-btn" aria-label="Close" style="font-size: 2rem; color: #6366f1; background: none; border: none; box-shadow: none; flex: 1; text-align: right;"> &times;</button>
+          </div>        
         <form id="add-transaction-form" method="POST" action="{{ url_for('add_transaction') }}">
         <div style="display: flex; flex-direction: column; gap: 0.7rem; align-items: flex-start; margin-bottom: 1.2rem;">
             <label style="margin-bottom: 0.3rem; font-weight: 500;">Type *</label>
@@ -76,7 +79,9 @@
                         <option value="{{ cat }}">
                     {% endfor %}
                     <option value="Food">
+                    <option value="Groceries">
                     <option value="Utilities">
+                    <option value="Rent">
                     <option value="Transport">
                     <option value="Entertainment">
                     <option value="Shopping">
@@ -101,8 +106,11 @@
 <!-- Modal for Edit Transaction -->
 <div id="edit-transaction-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.35); z-index: 1002; align-items: center; justify-content: center;">
   <div style="background: #fff; border-radius: 12px; max-width: 480px; width: 95vw; padding: 2rem 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.18); position: relative; display: flex; flex-direction: column;">
-    <button id="close-edit-modal-btn" aria-label="Close" style="position: absolute; top: 1.2rem; right: 1.2rem; background: none; border: none; font-size: 2rem; color: #6366f1; cursor: pointer; align-self: flex-end;">&times;</button>
-    <h3 style="margin-bottom: 1.2rem; text-align: center;">Edit Transaction</h3>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem;">
+        <div style="flex: 1;"></div>
+        <h3 style="margin: 0; text-align: center; flex: 2;">Edit Transaction</h3>
+        <button id="close-edit-modal-btn" aria-label="Close" style="font-size: 2rem; color: #6366f1; background: none; border: none; box-shadow: none; flex: 1; text-align: right;"> &times;</button>
+      </div>  
     <form id="edit-transaction-form" method="POST">
       <!-- Populated dynamically -->
     </form>
@@ -110,16 +118,6 @@
 </div>
 
 <!-- Recommendations -->
-{% if recommendations %}
-<article style="background: #f3f4f6; border: 4px solid #6366f1; box-shadow: none;">
-    <h3 style="margin-bottom: 0.5rem;">Recommendations</h3>
-    <ul style="margin: 0; padding-left: 1.2em; line-height: 1.5;">
-        {% for tip in recommendations %}
-            <li>{{ tip }}</li>
-        {% endfor %}
-    </ul>
-</article>
-{% endif %}
 
 <!-- Recent Transactions Table -->
 <article>
@@ -131,7 +129,7 @@
             <tr>
             <th scope="col">Date</th>
             <th scope="col">Type</th>
-            <th scope="col">Amount</th>
+            <th scope="col">Amount ($)</th>
             <th scope="col">Category</th>
             <th scope="col">Description</th>
             <th scope="col" colspan="2" style="text-align: center;">Actions</th>
@@ -208,7 +206,6 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             params = '&mode=all_time';
         }
-        // Main chart and pie chart always side by side
         const mainChart = document.getElementById('mainChart');
         const mainChartTitle = document.getElementById('mainChartTitle');
         if (window.mainChartInstance) window.mainChartInstance.destroy();
@@ -262,7 +259,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     tooltip: {
                                         callbacks: {
                                             label: function(context) {
-                                                return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}`;
+                                                return `${context.dataset.label}: $${context.parsed.y.toFixed(2)}`;
                                             }
                                         }
                                     }
@@ -306,7 +303,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                         let value = context.parsed || 0;
                                         let total = context.dataset.data.reduce((a, b) => a + b, 0);
                                         let percentage = ((value / total) * 100).toFixed(1);
-                                        return `${label}: ${value.toFixed(2)} (${percentage}%)`;
+                                        return `${label}: $${value.toFixed(2)} (${percentage}%)`;
                                     }
                                 }
                             }
@@ -327,9 +324,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div>
                         <h3 style="margin-bottom: 0.5rem;">Summary</h3>
                         <div style="display: flex; gap: 2rem;">
-                            <div>Income:<br><strong style="color: #166534; font-size: 3em; font-weight: 500;">${summary.total_income.toFixed(2)}</strong></div>
-                            <div>Expenses:<br><strong style="color: #b91c1c; font-size: 3em; font-weight: 500;">${summary.total_expense.toFixed(2)}</strong></div>
-                            <div>Balance:<br><strong style="font-size: 3em; font-weight: 500;">${summary.balance.toFixed(2)}</strong></div>
+                            <div>Income:<br><strong style="color: #166534; font-size: 3em; font-weight: 500;">$${summary.total_income.toFixed(2)}</strong></div>
+                            <div>Expenses:<br><strong style="color: #b91c1c; font-size: 3em; font-weight: 500;">$${summary.total_expense.toFixed(2)}</strong></div>
+                            <div>Balance:<br><strong style="font-size: 3em; font-weight: 500;">$${summary.balance.toFixed(2)}</strong></div>
                         </div>
                     </div>`;
             });
@@ -357,6 +354,26 @@ document.addEventListener('DOMContentLoaded', function() {
                             </td>
                         </tr>`;
                 });
+            });
+        // Fetch recommendations
+        fetch(`/get_recommendations?${params.substring(1)}`)
+            .then(response => response.json())
+            .then(recommendations => {
+                let recSection = document.getElementById('recommendations-section');
+                if (!recSection) {
+                    recSection = document.createElement('article');
+                    recSection.id = 'recommendations-section';
+                    recSection.style.background = '#f3f4f6';
+                    recSection.style.border = '4px solid #6366f1';
+                    recSection.style.boxShadow = 'none';
+                    recSection.style.marginTop = '1.5rem';
+                    document.querySelector('#summary-section').after(recSection);
+                }
+                if (recommendations && recommendations.length > 0) {
+                    recSection.innerHTML = `<h3 style="margin-bottom: 0.5rem;">Recommendations</h3><ul style="margin: 0; padding-left: 1.2em; line-height: 1.5;">${recommendations.map(tip => `<li>${tip}</li>`).join('')}</ul>`;
+                } else {
+                    recSection.innerHTML = '';
+                }
             });
     }
     // Polish: Dynamically populate month/year dropdowns from backend
@@ -487,7 +504,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (response.redirected) {
                 closeModal();
                 reloadDashboardData();
-                window.location.href = response.url; // Return to dashboard
             } else {
                 return response.text();
             }
@@ -603,12 +619,17 @@ document.addEventListener('DOMContentLoaded', function() {
             if (response.redirected) {
                 closeEditModal();
                 reloadDashboardData();
-                window.location.href = response.url;
             } else {
                 return response.text();
             }
         });
     });
+    // For date input fields in add/edit transaction modals, set placeholder and default value to today:
+    document.getElementById('modal_date').placeholder = 'YYYY-MM-DD';
+    document.getElementById('modal_date').value = new Date().toISOString().slice(0, 10);
+    // In edit modal, when populating the form, set placeholder and default value for #edit_date:
+    document.getElementById('edit_date').placeholder = 'YYYY-MM-DD';
+    if (!data.date_for_input) document.getElementById('edit_date').value = new Date().toISOString().slice(0, 10);
 });
 </script>
 {% endblock %}
