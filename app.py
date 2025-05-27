@@ -8,7 +8,7 @@ from collections import defaultdict
 
 #App Configuration
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your_very_secret_and_unguessable_key'
+app.config['SECRET_KEY'] = uuid.uuid4().hex
 
 data_dir = 'data'
 users_file = os.path.join(data_dir, 'users.json')
@@ -144,9 +144,11 @@ def register():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
+
         if not username or not password:
             flash('Username and password are required.', 'danger')
             return render_template('register.html')
+
         users = load_users()
         if username in users:
             flash('Username already exists. Please choose another.', 'warning')
