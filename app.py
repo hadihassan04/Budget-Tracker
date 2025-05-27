@@ -6,18 +6,28 @@ import datetime
 from functools import wraps
 from collections import defaultdict
 
-# --- App Configuration ---
+#App Configuration
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your_very_secret_and_unguessable_key'  # Use a strong key when deploying
+app.config['SECRET_KEY'] = 'your_very_secret_and_unguessable_key'
 
 data_dir = 'data'
 users_file = os.path.join(data_dir, 'users.json')
 transaction_date_format = '%Y-%m-%d'
 datetime_storage_format = '%Y-%m-%d %H:%M:%S'
 
-#User Management
+# Authentication decorator
+def login_required(f):
+    """Ensures user is logged in before accessing protected routes"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Please log in to access this page.', 'warning')
+            return redirect(url_for('login', next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# User data management
 def load_users():
-    """Loads user data from users.json"""
     if not os.path.exists(users_file):
         return {}
     try:
@@ -66,7 +76,7 @@ def save_transactions(user_id, transactions):
         with open(filepath, 'w') as f:
             json.dump(transactions, f, indent=4)
     except IOError as e:
-        print(f"Error saving transactions file for user {user_id}: {e}")
+        app.logger.error(f"Error saving transactions file for user {user_id}: {e}")
 
 #Transaction Analysis
 def calculate_summary(transactions):
@@ -119,27 +129,16 @@ def generate_recommendations(transactions):
         tips.append("Good balance! Your recorded spending seems manageable relative to income.")
     return tips
 
-# Decorators
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            flash('Please log in to access this page.', 'warning')
-            return redirect(url_for('login', next=request.url))
-        return f(*args, **kwargs)
-    return decorated_function
-
-# Routes: Authentication
+# Main navigation and authentication routes
 @app.route('/')
 def index():
-    """Redirects to dashboard if logged in, otherwise to login page."""
+    """Home page - redirect to dashboard if logged in, otherwise login page"""
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    """Handles user registration using bcrypt."""
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
     if request.method == 'POST':
@@ -166,7 +165,6 @@ def register():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Handles user login using bcrypt."""
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
     if request.method == 'POST':
@@ -202,7 +200,6 @@ def logout():
     flash('You have been logged out.', 'info')
     return redirect(url_for('login'))
 
-# Routes: Dashboard & Transactions
 @app.route('/dashboard')
 @login_required
 def dashboard():
@@ -211,7 +208,10 @@ def dashboard():
     try:
         transactions_sorted = sorted(
             transactions,
-            key=lambda t: datetime.datetime.strptime(t.get('date', datetime.datetime.now().strftime(transaction_date_format)), transaction_date_format),
+            key=lambda t: (
+                datetime.datetime.strptime(t['date'], transaction_date_format).date(),
+                datetime.datetime.strptime(t['added_datetime'], datetime_storage_format)
+            ),
             reverse=True
         )
     except ValueError:
@@ -229,6 +229,7 @@ def dashboard():
         recommendations=recommendations
     )
 
+#Transaction Management
 @app.route('/add_transaction', methods=['POST'])
 @login_required
 def add_transaction():
@@ -265,7 +266,7 @@ def add_transaction():
         'user_id': user_id,
         'type': trans_type,
         'amount': amount,
-        'category': category if trans_type == 'expense' else None,
+        'category': category,
         'description': description,
         'date': transaction_date,
         'added_datetime': datetime.datetime.now().strftime(datetime_storage_format)
@@ -273,26 +274,6 @@ def add_transaction():
     transactions.append(new_transaction)
     save_transactions(user_id, transactions)
     flash(f'{trans_type.capitalize()} of {amount:.2f} added successfully!', 'success')
-    return redirect(url_for('dashboard'))
-
-@app.route('/delete_transaction/<transaction_id>', methods=['POST'])
-@login_required
-def delete_transaction(transaction_id):
-    user_id = session['user_id']
-    transactions = load_transactions(user_id)
-    transaction_to_delete = None
-    index_to_delete = -1
-    for i, t in enumerate(transactions):
-        if t.get('transaction_id') == transaction_id:
-            transaction_to_delete = t
-            index_to_delete = i
-            break
-    if transaction_to_delete:
-        transactions.pop(index_to_delete)
-        save_transactions(user_id, transactions)
-        flash(f"Transaction '{transaction_to_delete.get('description', 'N/A')}' deleted successfully.", 'success')
-    else:
-        flash('Transaction not found.', 'danger')
     return redirect(url_for('dashboard'))
 
 @app.route('/edit_transaction/<transaction_id>', methods=['GET', 'POST'])
@@ -346,7 +327,7 @@ def edit_transaction(transaction_id):
         transactions[transaction_index]['type'] = trans_type
         transactions[transaction_index]['amount'] = amount
         transactions[transaction_index]['description'] = description
-        transactions[transaction_index]['category'] = category if trans_type == 'expense' else None
+        transactions[transaction_index]['category'] = category
         transactions[transaction_index]['date'] = transaction_date
         save_transactions(user_id, transactions)
         flash('Transaction updated successfully!', 'success')
@@ -362,6 +343,27 @@ def edit_transaction(transaction_id):
         categories = get_categories(all_transactions)
         return render_template('edit_transaction.html', transaction=transaction_to_edit, categories=categories)
 
+@app.route('/delete_transaction/<transaction_id>', methods=['POST'])
+@login_required
+def delete_transaction(transaction_id):
+    user_id = session['user_id']
+    transactions = load_transactions(user_id)
+    transaction_to_delete = None
+    index_to_delete = -1
+    for i, t in enumerate(transactions):
+        if t.get('transaction_id') == transaction_id:
+            transaction_to_delete = t
+            index_to_delete = i
+            break
+    if transaction_to_delete:
+        transactions.pop(index_to_delete)
+        save_transactions(user_id, transactions)
+        flash(f"Transaction {transaction_to_delete.get('description', 'N/A')} deleted successfully.", 'success')
+    else:
+        flash('Transaction not found.', 'danger')
+    return redirect(url_for('dashboard'))
+
+# Dynamic content
 @app.route('/get_chart_data', methods=['GET'])
 @login_required
 def get_chart_data():
@@ -484,16 +486,22 @@ def get_transactions():
     month = request.args.get('month')
     year = request.args.get('year')
     transactions = load_transactions(user_id)
+
     if mode == 'month' and month and year:
         transactions = [t for t in transactions if t.get('date', '').startswith(f'{year}-{month}')]
+
     try:
         transactions_sorted = sorted(
             transactions,
-            key=lambda t: datetime.datetime.strptime(t.get('date', datetime.datetime.now().strftime(transaction_date_format)), transaction_date_format),
+            key=lambda t: (
+                datetime.datetime.strptime(t['date'], transaction_date_format).date(),
+                datetime.datetime.strptime(t['added_datetime'], datetime_storage_format) # Sort by full datetime for secondary key
+            ),
             reverse=True
         )
     except ValueError:
         transactions_sorted = transactions
+
     return jsonify(transactions_sorted)
 
 @app.route('/get_months_years')
@@ -540,5 +548,6 @@ def get_recommendations():
     recommendations = generate_recommendations(transactions)
     return jsonify(recommendations)
 
+#Run app
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)

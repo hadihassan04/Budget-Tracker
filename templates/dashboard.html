@@ -21,17 +21,16 @@
 
     <!-- Charts Section -->
     <div id="main-chart-section" style="margin-bottom: 2rem;">
-        <!-- Main chart and pie chart always side by side -->
         <div id="main-charts-row" style="display: flex; flex-wrap: wrap; gap: 2rem;">
             <article id="mainChartArticle" style="flex: 1 1 350px; min-width: 320px; min-height: 350px;">
                 <h3 id="mainChartTitle" style="margin-bottom: 1rem;">Income vs Expenses</h3>
-            <div style="height: 300px; position: relative;">
+            <div id="mainChartContainer" style="height: 300px; position: relative;">
                     <canvas id="mainChart"></canvas>
             </div>
         </article>
             <article style="flex: 1 1 350px; min-width: 320px; min-height: 350px; background: #f9fafb; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
                 <h3 style="margin-bottom: 1rem;">Spending by Category</h3>
-            <div style="height: 300px; position: relative;">
+            <div id="categoryChartContainer" style="height: 300px; position: relative;">
                     <canvas id="categoryChart"></canvas>
             </div>
         </article>
@@ -101,10 +100,10 @@
         <button type="submit" style="margin-top: 0.2rem; width: 100%; height: 3rem;">Add Transaction</button>
     </form>
     </div>
-</div>
+    </div>
 
-<!-- Modal for Edit Transaction -->
-<div id="edit-transaction-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.35); z-index: 1002; align-items: center; justify-content: center;">
+    <!-- Modal for Edit Transaction -->
+    <div id="edit-transaction-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.35); z-index: 1002; align-items: center; justify-content: center;">
   <div style="background: #fff; border-radius: 12px; max-width: 480px; width: 95vw; padding: 2rem 1.5rem; box-shadow: 0 8px 32px rgba(0,0,0,0.18); position: relative; display: flex; flex-direction: column;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem;">
         <div style="flex: 1;"></div>
@@ -115,12 +114,10 @@
       <!-- Populated dynamically -->
     </form>
   </div>
-</div>
+    </div>
 
-<!-- Recommendations -->
-
-<!-- Recent Transactions Table -->
-<article>
+    <!-- Recent Transactions Table -->
+    <article>
     <h3 style="margin-bottom: 1rem;">All Transactions</h3>
     {% if transactions %}
         <figure style="margin: 0; background: none; box-shadow: none; max-height: 400px; overflow-y: auto;">
@@ -159,206 +156,249 @@
     {% else %}
         <p>No transactions recorded yet.</p>
     {% endif %}
-</article>
+    </article>
 
-<!-- Charts JavaScript -->
+    <!--JavaScript -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // State
     let mode = 'all_time';
     let selectedMonth = null;
     let selectedYear = null;
+    let monthsByYearData = {};
+    // DOM Elements
     const tabAllTime = document.getElementById('tab-all-time');
     const tabMonthly = document.getElementById('tab-monthly');
     const monthSelect = document.getElementById('month-select');
     const yearSelect = document.getElementById('year-select');
     const monthYearControls = document.getElementById('month-year-controls');
+    const mainChartCanvas = document.getElementById('mainChart');
+    const mainChartContainer = document.getElementById('mainChartContainer');
+    const mainChartTitle = document.getElementById('mainChartTitle');
+    const categoryChartCanvas = document.getElementById('categoryChart');
+    const categoryChartContainer = document.getElementById('categoryChartContainer');
+    const summarySection = document.getElementById('summary-section');
+    const transactionsTableBody = document.getElementById('transactions-table-body');
+    
+    const fabAddTransaction = document.getElementById('fab-add-transaction');
+    const addTransactionModal = document.getElementById('add-transaction-modal');
+    const closeModalBtn = document.getElementById('close-modal-btn');
+    const addTransactionForm = document.getElementById('add-transaction-form');
+    const modalTypeIncome = document.getElementById('modal_type_income');
+    const modalTypeExpense = document.getElementById('modal_type_expense');
+    const modalCategoryInput = document.getElementById('modal_category');
+    const modalCategoryLabel = document.getElementById('modal_category_label');
+    const modalDateInput = document.getElementById('modal_date');
+
+    const editTransactionModal = document.getElementById('edit-transaction-modal');
+    const closeEditModalBtn = document.getElementById('close-edit-modal-btn');
+    const editTransactionForm = document.getElementById('edit-transaction-form');
+
+    // --- Helper Functions ---
+    async function fetchData(url) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                console.error(`Error fetching ${url}: ${response.statusText}`);
+                return null;
+            }
+            return await response.json();
+        } catch (error) {
+            console.error(`Network error fetching ${url}:`, error);
+            return null;
+        }
+    }
+
+    function destroyChartIfExists(instance) {
+        if (instance) {
+            instance.destroy();
+        }
+        return null; // Return null to reassign to the chart instance variable
+    }
+    
+    function showNoDataMessage(containerElement, message) {
+        // Ensure the container is clean before adding the message
+        containerElement.innerHTML = `<div style="height: 100%; display: flex; align-items: center; justify-content: center; color: #666;">${message}</div>`;
+    }
+
+    function ensureCanvasExists(containerElement, canvasId) {
+        if (!containerElement.querySelector('canvas')) {
+            containerElement.innerHTML = `<canvas id="${canvasId}"></canvas>`;
+        }
+        return containerElement.querySelector('canvas');
+    }
+
+
+    function populateSelect(selectEl, options, valueField, textFieldOrFormatter, defaultEmptyOption = false) {
+        selectEl.innerHTML = '';
+        if (defaultEmptyOption) {
+            const emptyOpt = document.createElement('option');
+            emptyOpt.value = "";
+            emptyOpt.textContent = "---"; // Or some placeholder
+            selectEl.appendChild(emptyOpt);
+        }
+        options.forEach(item => {
+            const opt = document.createElement('option');
+            opt.value = item[valueField];
+            opt.textContent = typeof textFieldOrFormatter === 'function' ? textFieldOrFormatter(item) : item[textFieldOrFormatter];
+            selectEl.appendChild(opt);
+        });
+    }
+    
+    function setupModal(modalEl, openTriggerEl, closeButtonEl, formEl, onOpen, onClose) {
+        const open = () => {
+            modalEl.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+            if (onOpen) onOpen();
+        };
+        const close = () => {
+            modalEl.style.display = 'none';
+            document.body.style.overflow = '';
+            if (formEl) formEl.reset();
+            if (onClose) onClose();
+        };
+
+        if (openTriggerEl) openTriggerEl.addEventListener('click', open);
+        if (closeButtonEl) closeButtonEl.addEventListener('click', close);
+        modalEl.addEventListener('click', (e) => {
+            if (e.target === modalEl) close();
+        });
+        return { open, close };
+    }
+
+    function updateCategoryFieldConfig(isIncome, categoryInput, categoryLabel, config) {
+        const settings = isIncome ? config.income : config.expense;
+        categoryInput.setAttribute('list', settings.listId);
+        categoryInput.placeholder = settings.placeholder;
+        if (categoryLabel) categoryLabel.textContent = settings.label;
+    }
+    
+    // --- Chart Instances ---
+    window.mainChartInstance = null;
+    window.categoryChartInstance = null;
+
+    // --- Event Handlers & Logic ---
     function setActiveTab(selected) {
         tabAllTime.classList.toggle('active', selected === 'all_time');
         tabMonthly.classList.toggle('active', selected === 'month');
-        tabAllTime.style.background = selected === 'all_time' ? '#6366f1' : '#fff';
-        tabAllTime.style.color = selected === 'all_time' ? '#fff' : '#6366f1';
-        tabMonthly.style.background = selected === 'month' ? '#6366f1' : '#fff';
-        tabMonthly.style.color = selected === 'month' ? '#fff' : '#6366f1';
+        const activeBg = '#6366f1';
+        const inactiveBg = '#fff';
+        const activeColor = '#fff';
+        const inactiveColor = '#6366f1';
+
+        tabAllTime.style.background = selected === 'all_time' ? activeBg : inactiveBg;
+        tabAllTime.style.color = selected === 'all_time' ? activeColor : inactiveColor;
+        tabMonthly.style.background = selected === 'month' ? activeBg : inactiveBg;
+        tabMonthly.style.color = selected === 'month' ? activeColor : inactiveColor;
         monthYearControls.style.display = selected === 'month' ? 'flex' : 'none';
     }
-    tabAllTime.addEventListener('click', function() {
-        mode = 'all_time';
-        setActiveTab(mode);
-        reloadDashboardData();
-    });
-    tabMonthly.addEventListener('click', function() {
-        mode = 'month';
-        setActiveTab(mode);
-        reloadDashboardData();
-    });
-    monthSelect.addEventListener('change', function() {
-        selectedMonth = monthSelect.value;
-        if (mode === 'month') reloadDashboardData();
-    });
-    yearSelect.addEventListener('change', function() {
-        selectedYear = yearSelect.value;
-        if (mode === 'month') reloadDashboardData();
-    });
-    function reloadDashboardData() {
-        let params = '';
+
+    async function reloadDashboardData() {
+        let paramsObj = { mode: mode };
         if (mode === 'month' && selectedMonth && selectedYear) {
-            params = `&mode=month&month=${selectedMonth}&year=${selectedYear}`;
-        } else {
-            params = '&mode=all_time';
+            paramsObj.month = selectedMonth;
+            paramsObj.year = selectedYear;
         }
-        const mainChart = document.getElementById('mainChart');
-        const mainChartTitle = document.getElementById('mainChartTitle');
-        if (window.mainChartInstance) window.mainChartInstance.destroy();
-        if (window.categoryChartInstance) window.categoryChartInstance.destroy();
-        if (mode === 'month') {
-            mainChartTitle.textContent = 'Income vs Expenses';
-            // Day-by-day income vs expenses (bar for expenses, line for income)
-            fetch(`/get_chart_data?type=income_vs_expense${params}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.labels && data.labels.length > 0) {
-                        if (data.datasets && data.datasets.length === 2) {
-                            data.datasets[0].type = 'line'; // Income
-                            data.datasets[1].type = 'bar';  // Expenses
-                        }
-                        const ctx = mainChart.getContext('2d');
-                        window.mainChartInstance = new Chart(ctx, {
-                            data: data,
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {
-                                    legend: { display: true },
-                                },
-                                scales: {
-                                    y: { beginAtZero: true }
-                                }
-                            }
-                        });
-                    } else {
-                        mainChart.parentNode.innerHTML = 
-                            '<div style="height: 100%; display: flex; align-items: center; justify-content: center; color: #666;">No data to display</div>';
-                    }
-                });
-        } else {
-            mainChartTitle.textContent = 'Monthly Income & Spending';
-            // Monthly income & spending (bar/line chart)
-            fetch(`/get_chart_data?type=monthly_trend${params}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.labels && data.labels.length > 0) {
-                        const ctx = mainChart.getContext('2d');
-                        window.mainChartInstance = new Chart(ctx, {
-                            type: 'bar',
-                            data: data,
-                            options: {
-                                responsive: true,
-                                maintainAspectRatio: false,
-                                plugins: {
-                                    legend: { display: true },
-                                    tooltip: {
-                                        callbacks: {
-                                            label: function(context) {
-                                                return `${context.dataset.label}: $${context.parsed.y.toFixed(2)}`;
-                                            }
-                                        }
-                                    }
-                                },
-                                scales: {
-                                    y: {
-                                        beginAtZero: true,
-                                        title: { display: true, text: 'Amount' }
-                                    }
-                                }
-                            }
-                        });
-                    } else {
-                        mainChart.parentNode.innerHTML = 
-                            '<div style="height: 100%; display: flex; align-items: center; justify-content: center; color: #666;">No monthly data available</div>';
-                    }
-                });
-        }
-        // Category Pie Chart (always shown)
-        fetch(`/get_chart_data?type=category${params}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.labels && data.labels.length > 0) {
-                const ctx = document.getElementById('categoryChart').getContext('2d');
-                    window.categoryChartInstance = new Chart(ctx, {
-                    type: 'doughnut',
-                    data: data,
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        cutout: '60%',
-                        plugins: {
-                            legend: {
-                                position: 'right',
-                                    labels: { font: { size: 11 }, boxWidth: 15 }
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        let label = context.label || '';
-                                        let value = context.parsed || 0;
-                                        let total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                        let percentage = ((value / total) * 100).toFixed(1);
-                                        return `${label}: $${value.toFixed(2)} (${percentage}%)`;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                });
-            } else {
-                document.getElementById('categoryChart').parentNode.innerHTML = 
-                    '<div style="height: 100%; display: flex; align-items: center; justify-content: center; color: #666;">No expense data to display</div>';
+        const queryParams = new URLSearchParams(paramsObj).toString();
+
+        // Destroy existing charts
+        window.mainChartInstance = destroyChartIfExists(window.mainChartInstance);
+        window.categoryChartInstance = destroyChartIfExists(window.categoryChartInstance);
+
+        // Main Chart (Income vs Expenses or Monthly Trend)
+        mainChartTitle.textContent = mode === 'month' ? 'Income vs Expenses (Daily)' : 'Monthly Income & Spending Trend';
+        const mainChartType = mode === 'month' ? 'income_vs_expense' : 'monthly_trend';
+        const mainChartData = await fetchData(`/get_chart_data?type=${mainChartType}&${queryParams}`);
+        
+        const currentMainChartCanvas = ensureCanvasExists(mainChartContainer, 'mainChart');
+        if (mainChartData && mainChartData.labels && mainChartData.labels.length > 0) {
+            const mainCtx = currentMainChartCanvas.getContext('2d');
+            let chartConfigType = 'bar'; // Default for monthly_trend
+            if (mode === 'month' && mainChartData.datasets && mainChartData.datasets.length === 2) { // income_vs_expense
+                 // This data structure is specific: first dataset line, second bar
+                mainChartData.datasets[0].type = 'line';
+                mainChartData.datasets[1].type = 'bar';
+                 chartConfigType = 'bar'; // The overall chart type is bar, with one dataset overridden
             }
-        });
-        // Fetch summary (income, expense, balance)
-        fetch(`/get_summary?${params.substring(1)}`)
-            .then(response => response.json())
-            .then(summary => {
-                const section = document.getElementById('summary-section');
-                section.innerHTML = `
+
+            window.mainChartInstance = new Chart(mainCtx, {
+                type: chartConfigType,
+                data: mainChartData,
+                            options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: true }, tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: $${ctx.parsed.y.toFixed(2)}`}}},
+                    scales: { y: { beginAtZero: true, title: { display: true, text: 'Amount' } } }
+                    }
+                });
+        } else {
+            showNoDataMessage(mainChartContainer, mode === 'month' ? 'No daily data for selected period.' : 'No monthly trend data available.');
+        }
+
+        // Category Pie Chart
+        const categoryChartData = await fetchData(`/get_chart_data?type=category&${queryParams}`);
+        const currentCategoryChartCanvas = ensureCanvasExists(categoryChartContainer, 'categoryChart');
+        if (categoryChartData && categoryChartData.labels && categoryChartData.labels.length > 0) {
+            const catCtx = currentCategoryChartCanvas.getContext('2d');
+            window.categoryChartInstance = new Chart(catCtx, {
+                type: 'doughnut', data: categoryChartData,
+                            options: {
+                    responsive: true, maintainAspectRatio: false, cutout: '60%',
+                                plugins: {
+                        legend: { position: 'right', labels: { font: { size: 11 }, boxWidth: 15 }},
+                        tooltip: { callbacks: { label: (ctx) => {
+                            let total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                            let percentage = ((ctx.parsed / total) * 100).toFixed(1);
+                            return `${ctx.label}: $${ctx.parsed.toFixed(2)} (${percentage}%)`;
+                        }}}
+                                }
+                            }
+                        });
+                    } else {
+            showNoDataMessage(categoryChartContainer, 'No expense category data to display.');
+        }
+
+        // Summary
+        const summaryData = await fetchData(`/get_summary?${queryParams}`);
+        if (summaryData) {
+            summarySection.innerHTML = `
                     <div>
                         <h3 style="margin-bottom: 0.5rem;">Summary</h3>
-                        <div style="display: flex; gap: 2rem;">
-                            <div>Income:<br><strong style="color: #166534; font-size: 3em; font-weight: 500;">$${summary.total_income.toFixed(2)}</strong></div>
-                            <div>Expenses:<br><strong style="color: #b91c1c; font-size: 3em; font-weight: 500;">$${summary.total_expense.toFixed(2)}</strong></div>
-                            <div>Balance:<br><strong style="font-size: 3em; font-weight: 500;">$${summary.balance.toFixed(2)}</strong></div>
+                    <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
+                        <div>Income:<br><strong style="color: #166534; font-size: 2.5em; font-weight: 500;">$${summaryData.total_income.toFixed(2)}</strong></div>
+                        <div>Expenses:<br><strong style="color: #b91c1c; font-size: 2.5em; font-weight: 500;">$${summaryData.total_expense.toFixed(2)}</strong></div>
+                        <div>Balance:<br><strong style="font-size: 2.5em; font-weight: 500; color: ${summaryData.balance < 0 ? '#b91c1c' : '#166534'};">$${summaryData.balance.toFixed(2)}</strong></div>
                         </div>
                     </div>`;
-            });
-        // Fetch transactions for the table
-        fetch(`/get_transactions?${params.substring(1)}`)
-            .then(response => response.json())
-            .then(data => {
-                const tbody = document.getElementById('transactions-table-body');
-                tbody.innerHTML = '';
-                data.forEach(transaction => {
-                    tbody.innerHTML += `
-                        <tr>
-                            <td>${transaction.date || 'N/A'}</td>
-                            <td>${transaction.type.charAt(0).toUpperCase() + transaction.type.slice(1)}</td>
-                            <td class="${transaction.type}">${transaction.amount.toFixed(2)}</td>
-                            <td>${transaction.category || ''}</td>
-                            <td>${transaction.description || ''}</td>
+        }
+
+        // Transactions Table
+        const transactionsData = await fetchData(`/get_transactions?${queryParams}`);
+        transactionsTableBody.innerHTML = ''; // Clear existing
+        if (transactionsData && transactionsData.length > 0) {
+            transactionsData.forEach(t => {
+                transactionsTableBody.innerHTML += `
+                    <tr>
+                        <td>${t.date || 'N/A'}</td>
+                        <td>${t.type ? t.type.charAt(0).toUpperCase() + t.type.slice(1) : 'N/A'}</td>
+                        <td class="${t.type || ''}">${(t.amount || 0).toFixed(2)}</td>
+                        <td>${t.category || ''}</td>
+                        <td>${t.description || ''}</td>
                             <td style="padding: 0.3rem 0.5rem; text-align: center; vertical-align: middle;">
                                 <div style="display: flex; align-items: center; gap: 0.5rem; justify-content: center;">
-                                    <button class="edit-transaction-btn" data-id="${transaction.transaction_id}" style="padding: 0.2rem 1.2rem; font-size: 0.9em; min-width: 80px;">Edit</button>
-                                    <form action="/delete_transaction/${transaction.transaction_id}" method="POST" style="margin: 0; box-shadow: none; display: inline;">
+                                <button class="edit-transaction-btn" data-id="${t.transaction_id}" style="padding: 0.2rem 1.2rem; font-size: 0.9em; min-width: 80px;">Edit</button>
+                                <form action="/delete_transaction/${t.transaction_id}" method="POST" style="margin: 0; box-shadow: none; display: inline;">
                                         <button type="submit" class="secondary outline" style="padding: 0.2rem 1.2rem; font-size: 0.9em; min-width: 80px; margin: 0;">Delete</button>
                                     </form>
                                 </div>
                             </td>
                         </tr>`;
                 });
-            });
-        // Fetch recommendations
-        fetch(`/get_recommendations?${params.substring(1)}`)
-            .then(response => response.json())
-            .then(recommendations => {
+        } else {
+            transactionsTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:1rem;">No transactions for this period.</td></tr>';
+        }
+
+        // Recommendations
+        const recommendationsData = await fetchData(`/get_recommendations?${queryParams}`);
                 let recSection = document.getElementById('recommendations-section');
                 if (!recSection) {
                     recSection = document.createElement('article');
@@ -367,269 +407,173 @@ document.addEventListener('DOMContentLoaded', function() {
                     recSection.style.border = '4px solid #6366f1';
                     recSection.style.boxShadow = 'none';
                     recSection.style.marginTop = '1.5rem';
-                    document.querySelector('#summary-section').after(recSection);
-                }
-                if (recommendations && recommendations.length > 0) {
-                    recSection.innerHTML = `<h3 style="margin-bottom: 0.5rem;">Recommendations</h3><ul style="margin: 0; padding-left: 1.2em; line-height: 1.5;">${recommendations.map(tip => `<li>${tip}</li>`).join('')}</ul>`;
+            recSection.style.padding = '1rem';
+            // Insert after summary, or a specific known element if summary might not exist
+            const summaryContainer = document.getElementById('summary-section');
+            if (summaryContainer && summaryContainer.parentNode) {
+                 summaryContainer.parentNode.insertBefore(recSection, summaryContainer.nextSibling);
+            } else { // Fallback, append to main content area or a known wrapper
+                document.querySelector('.content > article, .content > div').appendChild(recSection);
+            }
+        }
+        if (recommendationsData && recommendationsData.length > 0) {
+            recSection.innerHTML = `<h3 style="margin-bottom: 0.5rem;">Recommendations</h3><ul style="margin: 0; padding-left: 1.2em; line-height: 1.5;">${recommendationsData.map(tip => `<li>${tip}</li>`).join('')}</ul>`;
+            recSection.style.display = '';
                 } else {
                     recSection.innerHTML = '';
-                }
-            });
-    }
-    // Polish: Dynamically populate month/year dropdowns from backend
-    fetch('/get_months_years')
-        .then(response => response.json())
-        .then(monthsYears => {
-            // Clear dropdowns
-            monthSelect.innerHTML = '';
-            yearSelect.innerHTML = '';
-            const uniqueYears = [];
-            const monthsByYear = {};
-            monthsYears.forEach(obj => {
-                if (!uniqueYears.includes(obj.year)) uniqueYears.push(obj.year);
-                if (!monthsByYear[obj.year]) monthsByYear[obj.year] = [];
-                if (!monthsByYear[obj.year].includes(obj.month)) monthsByYear[obj.year].push(obj.month);
-            });
-            // Populate year dropdown
-            uniqueYears.forEach(y => {
-                const opt = document.createElement('option');
-                opt.value = y;
-                opt.textContent = y;
-                yearSelect.appendChild(opt);
-            });
-            // Populate month dropdown for the most recent year
-            let defaultYear = uniqueYears.length > 0 ? uniqueYears[0] : (new Date()).getFullYear();
-            let defaultMonth = (monthsByYear[defaultYear] && monthsByYear[defaultYear][0]) || ((new Date()).getMonth() + 1).toString().padStart(2, '0');
-            if (monthsByYear[defaultYear]) {
-                monthsByYear[defaultYear].forEach(m => {
-                    const opt = document.createElement('option');
-                    opt.value = m;
-                    opt.textContent = new Date(2000, parseInt(m, 10) - 1, 1).toLocaleString('default', { month: 'long' });
-                    monthSelect.appendChild(opt);
-                });
-            } else {
-                // fallback: all months
-                for (let i = 1; i <= 12; i++) {
-                    const m = i.toString().padStart(2, '0');
-                    const opt = document.createElement('option');
-                    opt.value = m;
-                    opt.textContent = new Date(2000, i - 1, 1).toLocaleString('default', { month: 'long' });
-                    monthSelect.appendChild(opt);
-                }
-            }
-            // Set default selected
-            yearSelect.value = defaultYear;
-            monthSelect.value = defaultMonth;
-            selectedYear = defaultYear;
-            selectedMonth = defaultMonth;
-            setActiveTab('all_time');
-            reloadDashboardData();
-            // When year changes, update months dropdown
-            yearSelect.addEventListener('change', function() {
-                const y = yearSelect.value;
-                monthSelect.innerHTML = '';
-                if (monthsByYear[y]) {
-                    monthsByYear[y].forEach(m => {
-                        const opt = document.createElement('option');
-                        opt.value = m;
-                        opt.textContent = new Date(2000, parseInt(m, 10) - 1, 1).toLocaleString('default', { month: 'long' });
-                        monthSelect.appendChild(opt);
-                    });
-                    monthSelect.value = monthsByYear[y][0];
-                } else {
-                    for (let i = 1; i <= 12; i++) {
-                        const m = i.toString().padStart(2, '0');
-                        const opt = document.createElement('option');
-                        opt.value = m;
-                        opt.textContent = new Date(2000, i - 1, 1).toLocaleString('default', { month: 'long' });
-                        monthSelect.appendChild(opt);
-                    }
-                    monthSelect.value = ((new Date()).getMonth() + 1).toString().padStart(2, '0');
-                }
-                selectedYear = y;
-                selectedMonth = monthSelect.value;
-                if (mode === 'month') reloadDashboardData();
-            });
-            monthSelect.addEventListener('change', function() {
-                selectedMonth = monthSelect.value;
-                if (mode === 'month') reloadDashboardData();
-            });
-        });
-    // Floating Action Button and Modal logic
-    const fab = document.getElementById('fab-add-transaction');
-    const modal = document.getElementById('add-transaction-modal');
-    const closeModalBtn = document.getElementById('close-modal-btn');
-    const addTransactionForm = document.getElementById('add-transaction-form');
-    function openModal() {
-        modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
-    }
-    function closeModal() {
-        modal.style.display = 'none';
-        document.body.style.overflow = '';
-        addTransactionForm.reset();
-    }
-    fab.addEventListener('click', openModal);
-    closeModalBtn.addEventListener('click', closeModal);
-    modal.addEventListener('click', function(e) {
-        if (e.target === modal) closeModal();
-    });
-    // Modal category field logic
-    function updateModalCategoryField() {
-        var isIncome = document.getElementById('modal_type_income').checked;
-        var categoryInput = document.getElementById('modal_category');
-        var label = document.getElementById('modal_category_label');
-        if (isIncome) {
-            categoryInput.setAttribute('list', 'modal_income_categories');
-            categoryInput.placeholder = 'e.g., Salary';
-            label.textContent = 'Category * (Income)';
-        } else {
-            categoryInput.setAttribute('list', 'modal_expense_categories');
-            categoryInput.placeholder = 'e.g., Groceries';
-            label.textContent = 'Category * (Expense)';
+            recSection.style.display = 'none';
         }
     }
-    document.getElementById('modal_type_income').addEventListener('change', updateModalCategoryField);
-    document.getElementById('modal_type_expense').addEventListener('change', updateModalCategoryField);
-    updateModalCategoryField();
-    // AJAX submit for add transaction
-    addTransactionForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const formData = new FormData(addTransactionForm);
-        fetch(addTransactionForm.action, {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (response.redirected) {
-                closeModal();
-                reloadDashboardData();
-            } else {
-                return response.text();
-            }
-        })
-        .then(data => {
-            // Optionally show a toast or error
+
+    async function initializeMonthYearSelectors() {
+        const data = await fetchData('/get_months_years');
+        if (!data) return;
+
+        monthsByYearData = {}; // Reset
+            const uniqueYears = [];
+        data.forEach(obj => {
+                if (!uniqueYears.includes(obj.year)) uniqueYears.push(obj.year);
+            if (!monthsByYearData[obj.year]) monthsByYearData[obj.year] = [];
+            if (!monthsByYearData[obj.year].includes(obj.month)) monthsByYearData[obj.year].push(obj.month);
         });
-    });
-    // Edit Transaction Modal logic
-    const editModal = document.getElementById('edit-transaction-modal');
-    const closeEditModalBtn = document.getElementById('close-edit-modal-btn');
-    const editTransactionForm = document.getElementById('edit-transaction-form');
-    function openEditModal() {
-        editModal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
+        
+        uniqueYears.sort((a,b) => b-a); // Newest year first
+        Object.values(monthsByYearData).forEach(months => months.sort((a,b) => b-a)); // Newest month first
+
+        populateSelect(yearSelect, uniqueYears.map(y => ({ year: y })), 'year', 'year');
+
+        const currentYear = new Date().getFullYear();
+        const currentMonth = (new Date().getMonth() + 1).toString().padStart(2, '0');
+
+        selectedYear = uniqueYears.includes(currentYear) ? currentYear : (uniqueYears[0] || currentYear);
+        yearSelect.value = selectedYear;
+        
+        updateMonthDropdown(selectedYear.toString());
+        
+        selectedMonth = (monthsByYearData[selectedYear] && monthsByYearData[selectedYear].includes(currentMonth)) ? currentMonth : (monthsByYearData[selectedYear]?.[0] || currentMonth);
+        monthSelect.value = selectedMonth;
+
+        setActiveTab('all_time'); // Default view
+        reloadDashboardData();
     }
-    function closeEditModal() {
-        editModal.style.display = 'none';
-        document.body.style.overflow = '';
-        editTransactionForm.reset();
+
+    function updateMonthDropdown(year) {
+        const monthsForYear = monthsByYearData[year] || [];
+        const monthOptions = monthsForYear.length > 0 ? 
+            monthsForYear.map(m => ({ month: m, name: new Date(2000, parseInt(m, 10) - 1, 1).toLocaleString('default', { month: 'long' }) }))
+            : Array.from({length: 12}, (_, i) => ({month: (i+1).toString().padStart(2,'0'), name: new Date(2000, i, 1).toLocaleString('default', {month: 'long'})}));
+        
+        populateSelect(monthSelect, monthOptions, 'month', 'name');
+        if (monthsForYear.length > 0) {
+            monthSelect.value = monthsForYear[0]; // Default to newest month for that year
+        } else {
+            monthSelect.value = (new Date().getMonth() + 1).toString().padStart(2, '0'); // Default to current month if no data
+        }
     }
-    closeEditModalBtn.addEventListener('click', closeEditModal);
-    editModal.addEventListener('click', function(e) {
-        if (e.target === editModal) closeEditModal();
+    
+    // --- Event Listener Setup ---
+    tabAllTime.addEventListener('click', () => { mode = 'all_time'; setActiveTab(mode); reloadDashboardData(); });
+    tabMonthly.addEventListener('click', () => { mode = 'month'; setActiveTab(mode); reloadDashboardData(); });
+
+    yearSelect.addEventListener('change', function() {
+        selectedYear = this.value;
+        updateMonthDropdown(selectedYear);
+        selectedMonth = monthSelect.value; // after month dropdown is updated
+        if (mode === 'month') reloadDashboardData();
     });
-    // Attach event to edit buttons
-    document.body.addEventListener('click', function(e) {
+    monthSelect.addEventListener('change', function() {
+        selectedMonth = this.value;
+        if (mode === 'month') reloadDashboardData();
+    });
+
+    // Add Transaction Modal
+    const addModalCtrl = setupModal(addTransactionModal, fabAddTransaction, closeModalBtn, addTransactionForm, 
+        () => { modalDateInput.value = new Date().toISOString().slice(0, 10); updateAddModalCategoryField(); }
+    );
+    const addCategoryConfig = {
+        income: { listId: 'modal_income_categories', placeholder: 'e.g., Salary', label: 'Category * (Income)' },
+        expense: { listId: 'modal_expense_categories', placeholder: 'e.g., Groceries', label: 'Category * (Expense)' }
+    };
+    function updateAddModalCategoryField() {
+        updateCategoryFieldConfig(modalTypeIncome.checked, modalCategoryInput, modalCategoryLabel, addCategoryConfig);
+    }
+    modalTypeIncome.addEventListener('change', updateAddModalCategoryField);
+    modalTypeExpense.addEventListener('change', updateAddModalCategoryField);
+
+    // Edit Transaction Modal
+    const editModalCtrl = setupModal(editTransactionModal, null, closeEditModalBtn, editTransactionForm);
+    const editCategoryConfig = { // Datalist IDs are part of dynamic HTML for edit
+        income: { listId: 'edit_income_categories_dynamic', placeholder: 'e.g., Salary', label: 'Category * (Income)' },
+        expense: { listId: 'edit_expense_categories_dynamic', placeholder: 'e.g., Groceries', label: 'Category * (Expense)' }
+    };
+
+    function setupEditFormCategorySwitch() {
+        const typeIncomeEl = document.getElementById('edit_type_income_dynamic');
+        const typeExpenseEl = document.getElementById('edit_type_expense_dynamic');
+        const categoryInputEl = document.getElementById('edit_category_dynamic');
+        const categoryLabelEl = document.getElementById('edit_category_label_dynamic');
+
+        if (!typeIncomeEl || !typeExpenseEl || !categoryInputEl || !categoryLabelEl) return;
+
+        const updateFn = () => updateCategoryFieldConfig(typeIncomeEl.checked, categoryInputEl, categoryLabelEl, editCategoryConfig);
+        
+        typeIncomeEl.addEventListener('change', updateFn);
+        typeExpenseEl.addEventListener('change', updateFn);
+        updateFn(); // Initial call
+    }
+    
+    document.body.addEventListener('click', async function(e) {
         if (e.target.classList.contains('edit-transaction-btn')) {
             const transactionId = e.target.getAttribute('data-id');
-            fetch(`/get_transaction/${transactionId}`)
-                .then(res => res.json())
-                .then(data => {
-                    // Populate the form fields
+            const data = await fetchData(`/get_transaction/${transactionId}`);
+            if (data) {
                     editTransactionForm.action = `/edit_transaction/${transactionId}`;
+                // Note: Using unique IDs for dynamic elements to avoid clashes if modal re-renders form
                     editTransactionForm.innerHTML = `
                         <div style="display: flex; flex-direction: column; gap: 0.7rem; align-items: flex-start; margin-bottom: 1.2rem;">
                             <label style="margin-bottom: 0.3rem; font-weight: 500;">Type *</label>
                             <div style="display: flex; gap: 1.5rem; align-items: center;">
-                                <input type="radio" id="edit_type_income" name="type" value="income" ${data.type === 'income' ? 'checked' : ''} style="margin-bottom: 0;">
-                                <label for="edit_type_income" style="margin-bottom: 0; margin-right: 0.5rem;">Income</label>
-                                <input type="radio" id="edit_type_expense" name="type" value="expense" ${data.type === 'expense' ? 'checked' : ''} style="margin-bottom: 0;">
-                                <label for="edit_type_expense" style="margin-bottom: 0;">Expense</label>
-                            </div>
+                            <input type="radio" id="edit_type_income_dynamic" name="type" value="income" ${data.type === 'income' ? 'checked' : ''} style="margin-bottom: 0;">
+                            <label for="edit_type_income_dynamic" style="margin-bottom: 0; margin-right: 0.5rem;">Income</label>
+                            <input type="radio" id="edit_type_expense_dynamic" name="type" value="expense" ${data.type === 'expense' ? 'checked' : ''} style="margin-bottom: 0;">
+                            <label for="edit_type_expense_dynamic" style="margin-bottom: 0;">Expense</label>
+                        </div>
                         </div>
                         <div style="display: flex; gap: 1.5rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1.2rem;">
                             <div style="flex: 1 1 140px; min-width: 140px;">
-                                <label for="edit_amount">Amount *</label>
-                                <input type="number" step="0.01" min="0.01" id="edit_amount" name="amount" value="${data.amount}" required>
+                            <label for="edit_amount_dynamic">Amount *</label>
+                            <input type="number" step="0.01" min="0.01" id="edit_amount_dynamic" name="amount" value="${data.amount}" required>
                             </div>
-                            <div style="flex: 1 1 180px; min-width: 180px;" id="edit_category_field">
-                                <label id="edit_category_label" for="edit_category">Category *</label>
-                                <input list="edit_income_categories" id="edit_category" name="category" value="${data.category || ''}" placeholder="e.g., Salary">
-                                <datalist id="edit_income_categories">
-                                    <option value="Salary">
-                                    <option value="Bonus">
-                                    <option value="Other">
+                        <div style="flex: 1 1 180px; min-width: 180px;">
+                            <label id="edit_category_label_dynamic" for="edit_category_dynamic">Category *</label>
+                            <input list="edit_income_categories_dynamic" id="edit_category_dynamic" name="category" value="${data.category || ''}" placeholder="e.g., Salary">
+                            <datalist id="edit_income_categories_dynamic">
+                                <option value="Salary"><option value="Bonus"><option value="Other">
                                 </datalist>
-                                <datalist id="edit_expense_categories">
-                                    {% for cat in categories %}
-                                        <option value="{{ cat }}">
-                                    {% endfor %}
-                                    <option value="Food">
-                                    <option value="Utilities">
-                                    <option value="Transport">
-                                    <option value="Entertainment">
-                                    <option value="Shopping">
-                                    <option value="Health">
-                                    <option value="Other">
+                            <datalist id="edit_expense_categories_dynamic">
+                                {% for cat in categories %}<option value="{{ cat }}">{% endfor %}
+                                <option value="Food"><option value="Utilities"><option value="Transport"><option value="Entertainment"><option value="Shopping"><option value="Health"><option value="Other">
                                 </datalist>
                             </div>
                             <div style="flex: 2 1 220px; min-width: 220px;">
-                                <label for="edit_description">Description</label>
-                                <input type="text" id="edit_description" name="description" value="${data.description || ''}">
+                            <label for="edit_description_dynamic">Description</label>
+                            <input type="text" id="edit_description_dynamic" name="description" value="${data.description || ''}">
                             </div>
                             <div style="flex: 1 1 180px; min-width: 180px;">
-                                <label for="edit_date">Date</label>
-                                <input type="date" id="edit_date" name="date" value="${data.date_for_input || ''}">
-                            </div>
+                            <label for="edit_date_dynamic">Date</label>
+                            <input type="date" id="edit_date_dynamic" name="date" value="${data.date_for_input || new Date().toISOString().slice(0,10)}">
+                        </div>
                         </div>
                         <button type="submit" style="margin-top: 0.2rem; width: 100%; height: 3rem;">Update Transaction</button>
                     `;
-                    // Category field logic
-                    function updateEditModalCategoryField() {
-                        var isIncome = document.getElementById('edit_type_income').checked;
-                        var categoryInput = document.getElementById('edit_category');
-                        var label = document.getElementById('edit_category_label');
-                        if (isIncome) {
-                            categoryInput.setAttribute('list', 'edit_income_categories');
-                            categoryInput.placeholder = 'e.g., Salary';
-                            label.textContent = 'Category * (Income)';
-                        } else {
-                            categoryInput.setAttribute('list', 'edit_expense_categories');
-                            categoryInput.placeholder = 'e.g., Groceries';
-                            label.textContent = 'Category * (Expense)';
-                        }
-                    }
-                    document.getElementById('edit_type_income').addEventListener('change', updateEditModalCategoryField);
-                    document.getElementById('edit_type_expense').addEventListener('change', updateEditModalCategoryField);
-                    updateEditModalCategoryField();
-                    openEditModal();
-                });
+                setupEditFormCategorySwitch(); // Setup listeners for the new dynamic form elements
+                editModalCtrl.open();
+            }
         }
     });
-    // AJAX submit for edit transaction (not nested)
-    editTransactionForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        const formData = new FormData(editTransactionForm);
-        fetch(editTransactionForm.action, {
-            method: 'POST',
-            body: formData
-        })
-        .then(response => {
-            if (response.redirected) {
-                closeEditModal();
-                reloadDashboardData();
-            } else {
-                return response.text();
-            }
-        });
-    });
-    // For date input fields in add/edit transaction modals, set placeholder and default value to today:
-    document.getElementById('modal_date').placeholder = 'YYYY-MM-DD';
-    document.getElementById('modal_date').value = new Date().toISOString().slice(0, 10);
-    // In edit modal, when populating the form, set placeholder and default value for #edit_date:
-    document.getElementById('edit_date').placeholder = 'YYYY-MM-DD';
-    if (!data.date_for_input) document.getElementById('edit_date').value = new Date().toISOString().slice(0, 10);
+
+    // --- Initial Load ---
+    initializeMonthYearSelectors();
 });
 </script>
 {% endblock %}
